@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>OpenCLI · 多表采集 · BEA</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Serif+SC:wght@400;600&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:#090d14; --bg2:#0d1520; --bg3:#131e2d;
+  --border:#1a2e45; --accent:#3b9eff; --accent2:#f0b429;
+  --success:#34d17a; --warn:#f0b429; --red:#ef4444;
+  --text:#d6e8ff; --muted:#4a6a8a; --dim:#1e3050;
+  --mono:'IBM Plex Mono',monospace; --serif:'ZCOOL XiaoWei','Noto Serif SC',serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);min-height:100vh;
+  background-image:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(59,158,255,.06) 0%,transparent 60%);}
+
+/* ── header ── */
+header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 1.5rem;height:54px;
+  display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;
+  box-shadow:0 1px 20px rgba(0,0,0,.5);}
+.logo{display:flex;align-items:center;gap:.7rem;font-size:.85rem;font-weight:600;letter-spacing:.04em;}
+.logo-emblem{width:28px;height:28px;position:relative;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.logo-emblem::before{content:'';position:absolute;inset:0;border:1.5px solid var(--accent);border-radius:3px;opacity:.5;animation:spin2 8s linear infinite;}
+.logo-emblem::after{content:'多';font-family:var(--serif);font-size:.85rem;color:var(--accent);text-shadow:0 0 10px rgba(59,158,255,.6);}
+@keyframes spin2{0%{transform:rotate(0deg);opacity:.4;}50%{opacity:1;}100%{transform:rotate(360deg);opacity:.4;}}
+.logo-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:pulse 2.4s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 8px var(--accent);}50%{opacity:.35;box-shadow:0 0 3px var(--accent);}}
+.logo-text{display:flex;flex-direction:column;gap:.05rem;line-height:1;}
+.logo-main{font-size:.82rem;color:var(--text);}
+.logo-sub{font-size:.6rem;color:var(--muted);letter-spacing:.06em;font-weight:400;}
+.badge{font-size:.6rem;padding:.12rem .38rem;border:1px solid var(--border);border-radius:2px;color:var(--muted);letter-spacing:.06em;}
+.badge.multi{border-color:rgba(240,180,41,.4);color:var(--accent2);background:rgba(240,180,41,.06);}
+.author{font-family:var(--serif);font-size:.78rem;color:var(--muted);letter-spacing:.04em;}
+.back-link{font-size:.68rem;color:var(--muted);text-decoration:none;padding:.2rem .55rem;
+  border:1px solid var(--border);border-radius:3px;transition:all .15s;}
+.back-link:hover{color:var(--accent);border-color:var(--accent);}
+
+/* ── layout ── */
+main{max-width:1100px;margin:0 auto;padding:1.5rem;display:flex;flex-direction:column;gap:1.2rem;}
+
+/* ── section card ── */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.card-header{padding:.7rem 1.1rem;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;gap:.8rem;}
+.card-title{font-size:.72rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);}
+.card-body{padding:1rem 1.1rem;}
+
+/* ── preset chips ── */
+.preset-area{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.8rem;}
+.preset-chip{font-size:.62rem;padding:.2rem .55rem;border:1px solid var(--dim);border-radius:3px;
+  color:var(--muted);cursor:pointer;background:none;font-family:var(--mono);transition:all .15s;white-space:nowrap;}
+.preset-chip:hover{border-color:var(--accent2);color:var(--accent2);}
+.preset-chip.active{border-color:var(--accent2);color:var(--accent2);background:rgba(240,180,41,.07);}
+
+/* ── table list ── */
+.table-list{display:flex;flex-direction:column;gap:.5rem;}
+.table-row{display:grid;grid-template-columns:110px 1fr 90px 28px;gap:.6rem;align-items:center;}
+.table-row-label{font-size:.6rem;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;
+  grid-column:1/-1;padding-bottom:.2rem;border-bottom:1px solid rgba(26,46,69,.4);}
+.tinput{background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);
+  font-family:var(--mono);font-size:.75rem;padding:.28rem .55rem;width:100%;transition:border-color .15s;}
+.tinput:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(59,158,255,.1);}
+.tselect{background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);
+  font-family:var(--mono);font-size:.75rem;padding:.28rem .4rem;width:100%;cursor:pointer;}
+.remove-btn{background:none;border:1px solid var(--dim);border-radius:3px;color:var(--muted);
+  cursor:pointer;font-size:.7rem;width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+  transition:all .15s;flex-shrink:0;}
+.remove-btn:hover{border-color:var(--red);color:var(--red);}
+.add-row-btn{font-size:.65rem;padding:.25rem .7rem;border:1px dashed var(--dim);border-radius:3px;
+  background:none;color:var(--muted);cursor:pointer;font-family:var(--mono);transition:all .15s;margin-top:.3rem;}
+.add-row-btn:hover{border-color:var(--accent);color:var(--accent);}
+
+/* ── freq & year ── */
+.global-params{display:flex;gap:1rem;flex-wrap:wrap;}
+.param-group{display:flex;flex-direction:column;gap:.2rem;}
+.param-label{font-size:.58rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;}
+
+/* ── run btn ── */
+.run-area{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;}
+.run-btn{background:linear-gradient(135deg,#2277cc 0%,#3b9eff 100%);border:none;border-radius:4px;
+  color:#040d16;cursor:pointer;font-family:var(--mono);font-size:.78rem;font-weight:700;
+  padding:.45rem 1.5rem;letter-spacing:.06em;transition:all .15s;
+  display:flex;align-items:center;gap:.45rem;box-shadow:0 2px 12px rgba(59,158,255,.2);}
+.run-btn:hover{box-shadow:0 4px 20px rgba(59,158,255,.35);transform:translateY(-1px);}
+.run-btn:disabled{background:var(--dim);box-shadow:none;transform:none;cursor:not-allowed;color:var(--muted);}
+.spinner{width:11px;height:11px;border:2px solid rgba(4,13,22,.3);border-top-color:#040d16;
+  border-radius:50%;animation:spin .6s linear infinite;display:none;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.run-btn.loading .spinner{display:block;}
+.run-btn.loading .btn-text{opacity:.6;}
+.progress-wrap{flex:1;min-width:160px;height:4px;background:var(--dim);border-radius:2px;overflow:hidden;}
+.progress-bar{height:100%;background:var(--accent);border-radius:2px;transition:width .3s;width:0%;}
+.run-status{font-size:.68rem;color:var(--muted);}
+
+/* ── results ── */
+.results-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.8rem;}
+.series-card{background:var(--bg3);border:1px solid var(--border);border-radius:6px;
+  padding:.8rem 1rem;animation:fadeIn .3s ease;position:relative;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+.series-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.4;}
+.series-label{font-size:.62rem;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:.3rem;}
+.series-name{font-size:.78rem;font-weight:600;color:var(--accent2);margin-bottom:.2rem;}
+.series-meta{font-size:.62rem;color:var(--dim);}
+.series-ok{color:var(--success);}
+.series-err{color:var(--red);}
+
+/* ── preview chart ── */
+.preview-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:1rem;}
+.preview-header{font-size:.68rem;color:var(--muted);margin-bottom:.7rem;display:flex;align-items:center;justify-content:space-between;}
+canvas{max-height:260px;}
+
+/* ── pipeline bar ── */
+.pipeline-section{background:rgba(59,158,255,.03);border:1px solid rgba(59,158,255,.15);
+  border-radius:8px;padding:1rem 1.2rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;}
+.pipeline-info{flex:1;min-width:200px;}
+.pipeline-info-title{font-size:.7rem;font-weight:600;color:var(--accent);margin-bottom:.3rem;}
+.pipeline-info-sub{font-size:.62rem;color:var(--muted);line-height:1.6;}
+.pipe-btn{font-size:.72rem;padding:.38rem .9rem;border:1px solid var(--accent2);border-radius:3px;
+  background:rgba(240,180,41,.06);color:var(--accent2);cursor:pointer;font-family:var(--mono);
+  transition:all .15s;font-weight:600;white-space:nowrap;}
+.pipe-btn:hover{background:rgba(240,180,41,.14);box-shadow:0 0 12px rgba(240,180,41,.2);}
+.pipe-btn:disabled{opacity:.4;cursor:not-allowed;}
+
+/* ── correlation matrix ── */
+.corr-wrap{overflow-x:auto;}
+.corr-table{border-collapse:collapse;font-size:.7rem;}
+.corr-table th,.corr-table td{padding:.32rem .55rem;border:1px solid var(--border);text-align:center;white-space:nowrap;}
+.corr-table th{background:var(--bg3);color:var(--muted);font-size:.6rem;letter-spacing:.06em;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-emblem"></div>
+    <div class="logo-dot"></div>
+    <div class="logo-text">
+      <div class="logo-main">OpenCLI · 多表采集与管道推送</div>
+      <div class="logo-sub">Multi-Series Collector · BEA NIPA · 领先/同步/滞后分析</div>
+    </div>
+    <span class="badge multi">多表</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:.8rem;">
+    <span class="author">天津财经大学统计学院　龚凤乾</span>
+    <a class="back-link" href="/">← 返回单表采集</a>
+  </div>
+</header>
+
+<main>
+
+  <!-- ① 预设组合 -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">① 预设指标组合</span>
+      <span style="font-size:.62rem;color:var(--muted)">点击预设快速填入，也可自定义</span>
+    </div>
+    <div class="card-body">
+      <div class="preset-area" id="presetArea"></div>
+    </div>
+  </div>
+
+  <!-- ② 表名配置 -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">② 指标表配置（可添加任意数量）</span>
+    </div>
+    <div class="card-body">
+      <div class="table-list" id="tableList">
+        <div class="table-row table-row-label">
+          <span>表名</span><span>指标描述（备注）</span><span>Line 代码</span><span></span>
+        </div>
+      </div>
+      <button class="add-row-btn" onclick="addRow()">＋ 添加一行</button>
+    </div>
+  </div>
+
+  <!-- ③ 全局参数 -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">③ 全局参数</span></div>
+    <div class="card-body">
+      <div class="global-params">
+        <div class="param-group">
+          <div class="param-label">频率</div>
+          <select class="tselect" id="globalFreq" style="width:130px">
+            <option value="Q">Q · 季度</option>
+            <option value="A">A · 年度</option>
+            <option value="M">M · 月度</option>
+          </select>
+        </div>
+        <div class="param-group">
+          <div class="param-label">起始年份（X=全部）</div>
+          <input class="tinput" id="globalYear" value="X" style="width:120px"/>
+        </div>
+        <div class="param-group">
+          <div class="param-label">时期对齐</div>
+          <select class="tselect" id="alignMode" style="width:150px">
+            <option value="intersect">取公共时期（交集）</option>
+            <option value="union">保留所有时期（并集）</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ④ 执行 -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">④ 采集与预览</span></div>
+    <div class="card-body">
+      <div class="run-area">
+        <button class="run-btn" id="runBtn" onclick="runCollect()">
+          <div class="spinner"></div>
+          <span class="btn-text">▶ 开始采集</span>
+        </button>
+        <div class="progress-wrap"><div class="progress-bar" id="progBar"></div></div>
+        <span class="run-status" id="runStatus">就绪</span>
+      </div>
+      <div id="resultsArea" style="margin-top:1rem;display:none;">
+        <div class="results-grid" id="resultsGrid"></div>
+        <div style="margin-top:1rem;" id="previewChartWrap"></div>
+        <div style="margin-top:1rem;" id="corrWrap"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⑤ 管道推送 -->
+  <div class="pipeline-section" id="pipelineSection" style="display:none;">
+    <div class="pipeline-info">
+      <div class="pipeline-info-title">数据管道就绪</div>
+      <div class="pipeline-info-sub" id="pipelineInfoSub">—</div>
+    </div>
+    <button class="pipe-btn" id="pipeBtn" onclick="pushToCliGong()">→ 推送至 CLI-Anything 分析台</button>
+    <button class="pipe-btn" style="border-color:var(--success);color:var(--success);background:rgba(52,209,122,.06);"
+      onclick="downloadMultiCSV()">⬇ 下载多列 CSV</button>
+  </div>
+
+</main>
+
+<script>
+// ══════════════════════════════════════════════════════
+// 预设组合
+// ══════════════════════════════════════════════════════
+const PRESETS = [
+  {
+    label: '领先→同步：住宅投资 + GDP',
+    freq: 'Q',
+    rows: [
+      { id:'T50305', desc:'私人固定投资（含住宅）', line:'1' },
+      { id:'T10101', desc:'GDP 增长率',             line:'1' },
+    ]
+  },
+  {
+    label: '同步→滞后：GDP + 企业利润',
+    freq: 'Q',
+    rows: [
+      { id:'T10101', desc:'GDP 增长率',   line:'1' },
+      { id:'T11200', desc:'国民收入（含企业利润）', line:'1' },
+    ]
+  },
+  {
+    label: '三变量：住宅投资 + GDP + 企业利润',
+    freq: 'Q',
+    rows: [
+      { id:'T50305', desc:'私人固定投资（住宅）', line:'1' },
+      { id:'T10101', desc:'GDP 增长率',           line:'1' },
+      { id:'T11200', desc:'国民收入/企业利润',     line:'1' },
+    ]
+  },
+  {
+    label: '五变量：领先/同步/滞后全套',
+    freq: 'Q',
+    rows: [
+      { id:'T50305', desc:'私人固定投资（领先）', line:'1' },
+      { id:'T20100', desc:'个人收入/储蓄率（领先）', line:'1' },
+      { id:'T10101', desc:'GDP 增长率（同步）',   line:'1' },
+      { id:'T11200', desc:'国民收入/企业利润（滞后）', line:'1' },
+      { id:'T40100', desc:'净出口（滞后）',        line:'1' },
+    ]
+  },
+];
+
+let rowCount = 0;
+let collectedSeries = []; // [{id, desc, periods:[], values:[]}]
+
+// ══════════════════════════════════════════════════════
+// 渲染预设
+// ══════════════════════════════════════════════════════
+function renderPresets() {
+  const area = document.getElementById('presetArea');
+  PRESETS.forEach((p, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'preset-chip';
+    btn.textContent = p.label;
+    btn.onclick = () => {
+      document.querySelectorAll('.preset-chip').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      applyPreset(p);
+    };
+    area.appendChild(btn);
+  });
+}
+
+function applyPreset(p) {
+  document.getElementById('tableList').innerHTML = `
+    <div class="table-row table-row-label">
+      <span>表名</span><span>指标描述（备注）</span><span>Line 代码</span><span></span>
+    </div>`;
+  rowCount = 0;
+  p.rows.forEach(r => addRow(r.id, r.desc, r.line));
+  document.getElementById('globalFreq').value = p.freq;
+}
+
+// ══════════════════════════════════════════════════════
+// 行管理
+// ══════════════════════════════════════════════════════
+function addRow(id='', desc='', line='1') {
+  const list = document.getElementById('tableList');
+  const idx  = ++rowCount;
+  const row  = document.createElement('div');
+  row.className = 'table-row';
+  row.id = `trow-${idx}`;
+  row.innerHTML = `
+    <input class="tinput" id="tid-${idx}"  value="${id}"   placeholder="如 T10101"/>
+    <input class="tinput" id="tdesc-${idx}" value="${desc}" placeholder="指标备注（可选）"/>
+    <input class="tinput" id="tline-${idx}" value="${line}" placeholder="1" style="width:80px"/>
+    <button class="remove-btn" onclick="removeRow(${idx})">✕</button>`;
+  list.appendChild(row);
+}
+
+function removeRow(idx) {
+  document.getElementById(`trow-${idx}`)?.remove();
+}
+
+function getRows() {
+  const rows = [];
+  document.querySelectorAll('[id^="trow-"]').forEach(row => {
+    const idx  = row.id.split('-')[1];
+    const id   = document.getElementById(`tid-${idx}`)?.value.trim();
+    const desc = document.getElementById(`tdesc-${idx}`)?.value.trim();
+    const line = document.getElementById(`tline-${idx}`)?.value.trim() || '1';
+    if (id) rows.push({ id, desc: desc || id, line });
+  });
+  return rows;
+}
+
+// ══════════════════════════════════════════════════════
+// 采集
+// ══════════════════════════════════════════════════════
+async function runCollect() {
+  const rows = getRows();
+  if (!rows.length) { alert('请至少添加一行指标'); return; }
+
+  const btn    = document.getElementById('runBtn');
+  const prog   = document.getElementById('progBar');
+  const status = document.getElementById('runStatus');
+  btn.disabled = true; btn.classList.add('loading');
+  document.getElementById('resultsArea').style.display  = 'none';
+  document.getElementById('pipelineSection').style.display = 'none';
+  collectedSeries = [];
+
+  const freq  = document.getElementById('globalFreq').value;
+  const year  = document.getElementById('globalYear').value.trim() || 'X';
+  const total = rows.length;
+  let done = 0;
+
+  const grid = document.getElementById('resultsGrid');
+  grid.innerHTML = '';
+
+  for (const row of rows) {
+    status.textContent = `采集 ${row.id}…（${done+1}/${total}）`;
+    const card = makeCard(row.id, row.desc, 'loading', '采集中…');
+    grid.appendChild(card);
+
+    try {
+      const url  = `/. netlify/functions/bea-proxy?tableName=${encodeURIComponent(row.id)}&frequency=${freq}&year=${encodeURIComponent(year)}`;
+      // 修正空格
+      const url2 = `/.netlify/functions/bea-proxy?tableName=${encodeURIComponent(row.id)}&frequency=${freq}&year=${encodeURIComponent(year)}`;
+      const resp = await fetch(url2);
+      const json = await resp.json();
+
+      if (json.error) throw new Error(json.error.slice(0, 60));
+
+      const data   = json.data || [];
+      const line1  = data.filter(r => r.LineNumber === row.line);
+      if (!line1.length) throw new Error(`Line ${row.line} 无数据`);
+
+      const periods = line1.map(r => r.TimePeriod);
+      const values  = line1.map(r => parseFloat((r.DataValue||'0').replace(/,/g,'')));
+      const desc2   = line1[0]?.LineDescription || row.desc;
+
+      collectedSeries.push({ id: row.id, desc: row.desc || desc2, periods, values });
+      updateCard(card, row.id, row.desc || desc2, 'ok',
+        `${values.length} 条　${periods[0]} → ${periods[periods.length-1]}`);
+    } catch(e) {
+      updateCard(card, row.id, row.desc, 'err', e.message);
+    }
+
+    done++;
+    prog.style.width = (done/total*100)+'%';
+  }
+
+  btn.disabled = false; btn.classList.remove('loading');
+  status.textContent = `完成 ${collectedSeries.length}/${total} 条序列`;
+  document.getElementById('resultsArea').style.display = 'block';
+
+  if (collectedSeries.length >= 2) {
+    const aligned = alignSeries(collectedSeries);
+    renderPreviewChart(aligned);
+    renderCorrMatrix(aligned);
+    showPipelineSection(aligned);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// 时期对齐
+// ══════════════════════════════════════════════════════
+function alignSeries(series) {
+  const mode = document.getElementById('alignMode').value;
+  // 找公共时期
+  let commonPeriods;
+  if (mode === 'intersect') {
+    const sets = series.map(s => new Set(s.periods));
+    const first = [...sets[0]];
+    commonPeriods = first.filter(p => sets.every(s => s.has(p))).sort();
+  } else {
+    const allP = new Set();
+    series.forEach(s => s.periods.forEach(p => allP.add(p)));
+    commonPeriods = [...allP].sort();
+  }
+
+  return {
+    periods: commonPeriods,
+    series: series.map(s => {
+      const map = {};
+      s.periods.forEach((p, i) => map[p] = s.values[i]);
+      return {
+        id:   s.id,
+        desc: s.desc,
+        values: commonPeriods.map(p => map[p] ?? null)
+      };
+    })
+  };
+}
+
+// ══════════════════════════════════════════════════════
+// 预览图表（多折线）
+// ══════════════════════════════════════════════════════
+const COLORS = ['#3b9eff','#f0b429','#34d17a','#ef4444','#bc8cff','#67e8f9','#f0883e','#a78bfa'];
+let chartInst = null;
+
+function renderPreviewChart(aligned) {
+  const wrap = document.getElementById('previewChartWrap');
+  wrap.innerHTML = `
+    <div class="preview-wrap">
+      <div class="preview-header">
+        <span>多序列预览（公共时期：${aligned.periods.length} 个）</span>
+        <span style="color:var(--dim);font-size:.6rem">${aligned.periods[0]} → ${aligned.periods[aligned.periods.length-1]}</span>
+      </div>
+      <canvas id="previewChart"></canvas>
+    </div>`;
+
+  if (chartInst) { chartInst.destroy(); chartInst = null; }
+  const ctx = document.getElementById('previewChart').getContext('2d');
+  chartInst = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: aligned.periods,
+      datasets: aligned.series.map((s, i) => ({
+        label: `${s.id} ${s.desc}`,
+        data: s.values,
+        borderColor: COLORS[i % COLORS.length],
+        backgroundColor: 'transparent',
+        borderWidth: 1.6,
+        pointRadius: aligned.periods.length > 80 ? 0 : 2,
+        tension: .3,
+        spanGaps: true,
+      }))
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color:'#4a6a8a', font:{ family:"'IBM Plex Mono'", size:10 }, boxWidth:12 } },
+        tooltip: { mode:'index', intersect:false }
+      },
+      scales: {
+        x: { ticks:{ color:'#4a6a8a', maxTicksLimit:12, font:{family:"'IBM Plex Mono'",size:10} }, grid:{color:'#131e2d'} },
+        y: { ticks:{ color:'#4a6a8a', font:{family:"'IBM Plex Mono'",size:10} }, grid:{color:'#131e2d'} }
+      }
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// 相关系数矩阵
+// ══════════════════════════════════════════════════════
+function renderCorrMatrix(aligned) {
+  const wrap = document.getElementById('corrWrap');
+  const n    = aligned.series.length;
+  if (n < 2) { wrap.innerHTML = ''; return; }
+
+  const corr = Array.from({length:n}, () => new Array(n).fill(0));
+  for (let i=0;i<n;i++) {
+    for (let j=0;j<n;j++) {
+      corr[i][j] = pearson(aligned.series[i].values, aligned.series[j].values);
+    }
+  }
+
+  const headers = aligned.series.map(s => s.id);
+  let html = `<div class="preview-wrap"><div class="preview-header">相关系数矩阵（Pearson）</div>
+    <div class="corr-wrap"><table class="corr-table"><thead><tr><th></th>`;
+  headers.forEach(h => html += `<th>${h}</th>`);
+  html += '</tr></thead><tbody>';
+  for (let i=0;i<n;i++) {
+    html += `<tr><th>${headers[i]}</th>`;
+    for (let j=0;j<n;j++) {
+      const v = corr[i][j];
+      const c = v > .7 ? '#34d17a' : v > .4 ? '#f0b429' : v < -.4 ? '#ef4444' : '#4a6a8a';
+      html += `<td style="color:${c};font-weight:${i===j?'600':'400'}">${v.toFixed(3)}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table></div></div>';
+  wrap.innerHTML = html;
+}
+
+function pearson(a, b) {
+  const pairs = a.map((v,i) => [v, b[i]]).filter(([x,y]) => x!=null && y!=null && !isNaN(x) && !isNaN(y));
+  if (pairs.length < 3) return 0;
+  const n  = pairs.length;
+  const mx = pairs.reduce((s,[x])=>s+x,0)/n;
+  const my = pairs.reduce((s,[,y])=>s+y,0)/n;
+  let num=0, dx=0, dy=0;
+  pairs.forEach(([x,y]) => { num+=(x-mx)*(y-my); dx+=(x-mx)**2; dy+=(y-my)**2; });
+  return dx>0&&dy>0 ? num/Math.sqrt(dx*dy) : 0;
+}
+
+// ══════════════════════════════════════════════════════
+// 管道推送
+// ══════════════════════════════════════════════════════
+let _alignedCache = null;
+
+function showPipelineSection(aligned) {
+  _alignedCache = aligned;
+  const sec  = document.getElementById('pipelineSection');
+  const info = document.getElementById('pipelineInfoSub');
+  sec.style.display = 'flex';
+  info.textContent  =
+    `${aligned.series.length} 条序列 · ${aligned.periods.length} 个公共时期 · ` +
+    aligned.series.map(s => s.id).join(' + ');
+}
+
+function pushToCliGong() {
+  if (!_alignedCache) return;
+  const a = _alignedCache;
+  // 多序列 pipeline 格式：
+  // { multi: true, series:[{id,desc,periods,values}], periods:[...] }
+  const payload = {
+    multi:   true,
+    periods: a.periods,
+    series:  a.series.map(s => ({ id:s.id, desc:s.desc, values:s.values }))
+  };
+  const url = 'https://cli-gong.netlify.app?pipeline=' + encodeURIComponent(JSON.stringify(payload));
+  window.open(url, '_blank');
+}
+
+function downloadMultiCSV() {
+  if (!_alignedCache) return;
+  const a = _alignedCache;
+  const header = ['时间', ...a.series.map(s => `${s.id}(${s.desc})`)].join(',');
+  const rows   = a.periods.map((p, i) =>
+    [p, ...a.series.map(s => s.values[i] ?? '')].join(',')
+  );
+  const csv = header + '\n' + rows.join('\n');
+  const el  = document.createElement('a');
+  el.href     = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
+  el.download = `bea-multi-${Date.now()}.csv`;
+  el.click();
+}
+
+// ══════════════════════════════════════════════════════
+// 卡片辅助
+// ══════════════════════════════════════════════════════
+function makeCard(id, desc, status, detail) {
+  const el = document.createElement('div');
+  el.className = 'series-card';
+  el.innerHTML = `
+    <div class="series-label">${id}</div>
+    <div class="series-name">${desc || id}</div>
+    <div class="series-meta series-${status}">${detail}</div>`;
+  return el;
+}
+function updateCard(el, id, desc, status, detail) {
+  el.querySelector('.series-label').textContent = id;
+  el.querySelector('.series-name').textContent  = desc || id;
+  const meta = el.querySelector('.series-meta');
+  meta.className = `series-meta series-${status}`;
+  meta.textContent = detail;
+}
+
+// ══════════════════════════════════════════════════════
+// Init
+// ══════════════════════════════════════════════════════
+renderPresets();
+// 默认加两行空行
+addRow('T50305','私人固定投资（住宅）','1');
+addRow('T10101','GDP 增长率','1');
+</script>
+</body>
+</html>
