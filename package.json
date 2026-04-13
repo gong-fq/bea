@@ -1,0 +1,20 @@
+{
+  "name": "opencli-bea-stats",
+  "version": "1.0.0",
+  "description": "OpenCLI · 美国经济分析局（BEA）数据采集台 — Netlify 无服务器代理",
+  "main": "netlify/functions/bea-proxy.js",
+  "scripts": {
+    "dev": "netlify dev",
+    "build": "echo 'Static site — no build step required'"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "netlify-cli": "^17.0.0"
+  },
+  "keywords": ["bea", "economics", "statistics", "netlify", "opencli"],
+  "author": "龚凤乾 · 天津财经大学统计学院",
+  "license": "MIT"
+}

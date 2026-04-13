@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenCLI · 美国经济分析局数据采集台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Serif+SC:wght@400;600&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:      #090d14;
+    --bg2:     #0d1520;
+    --bg3:     #131e2d;
+    --border:  #1a2e45;
+    --accent:  #3b9eff;
+    --accent2: #f0b429;
+    --success: #34d17a;
+    --warn:    #f0b429;
+    --text:    #d6e8ff;
+    --muted:   #4a6a8a;
+    --dim:     #1e3050;
+    --mono:    'IBM Plex Mono', monospace;
+    --serif:   'ZCOOL XiaoWei', 'Noto Serif SC', serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(59,158,255,.06) 0%, transparent 60%);
+  }
+
+  /* ── 顶栏 ─────────────────── */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 1.5rem;
+    height: 54px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 1px 20px rgba(0,0,0,.5);
+  }
+  .logo {
+    display: flex; align-items: center; gap: .7rem;
+    font-size: .85rem; font-weight: 600; letter-spacing: .04em;
+  }
+  .logo-emblem {
+    width: 28px; height: 28px; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .logo-emblem::before {
+    content: '';
+    position: absolute; inset: 0;
+    border: 1.5px solid var(--accent);
+    border-radius: 3px;
+    opacity: .5;
+    animation: emblem-rotate 8s linear infinite;
+  }
+  .logo-emblem::after {
+    content: '美';
+    font-family: var(--serif);
+    font-size: .85rem;
+    color: var(--accent);
+    text-shadow: 0 0 10px rgba(59,158,255,.6);
+  }
+  @keyframes emblem-rotate {
+    0%   { transform: rotate(0deg); opacity:.4; }
+    50%  { opacity: 1; }
+    100% { transform: rotate(360deg); opacity:.4; }
+  }
+  .logo-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; box-shadow: 0 0 8px var(--accent); }
+    50% { opacity: .35; box-shadow: 0 0 3px var(--accent); }
+  }
+  .logo-text {
+    display: flex; flex-direction: column; gap: .05rem;
+    line-height: 1;
+  }
+  .logo-main { font-size: .82rem; color: var(--text); }
+  .logo-sub  { font-size: .6rem; color: var(--muted); letter-spacing: .06em; font-weight: 400; }
+  .badge {
+    font-size: .6rem; padding: .12rem .38rem;
+    border: 1px solid var(--border);
+    border-radius: 2px; color: var(--muted);
+    letter-spacing: .06em;
+  }
+  .badge.region {
+    border-color: rgba(59,158,255,.4);
+    color: var(--accent);
+    background: rgba(59,158,255,.06);
+  }
+  .author {
+    font-family: var(--serif);
+    font-size: .78rem; color: var(--muted);
+    letter-spacing: .04em;
+  }
+
+  /* ── 主布局 ───────────────── */
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 272px 1fr;
+    grid-template-rows: auto 1fr;
+    gap: 0;
+    height: calc(100vh - 54px);
+  }
+
+  /* ── 左侧命令面板 ─────────── */
+  .sidebar {
+    grid-row: 1 / 3;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-header {
+    padding: .9rem 1.2rem .5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: .2rem;
+  }
+  .sidebar-title {
+    font-size: .6rem; letter-spacing: .14em;
+    color: var(--muted); text-transform: uppercase;
+  }
+  .sidebar-region {
+    font-family: var(--serif);
+    font-size: .82rem; color: var(--accent);
+    letter-spacing: .04em;
+  }
+  .sidebar-scroll { overflow-y: auto; flex: 1; }
+  .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+  .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+  .sidebar-scroll::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 2px; }
+  .cmd-group { padding: .5rem 0; border-bottom: 1px solid rgba(26,46,69,.6); }
+  .cmd-group:last-child { border-bottom: none; }
+  .cmd-group-label {
+    padding: .25rem 1.2rem .15rem;
+    font-size: .58rem; letter-spacing: .12em;
+    color: var(--dim); text-transform: uppercase;
+  }
+  .cmd-btn {
+    width: 100%; text-align: left;
+    padding: .5rem 1.2rem;
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-family: var(--mono);
+    font-size: .74rem; transition: all .15s;
+    display: flex; align-items: center; gap: .6rem;
+    border-left: 2px solid transparent;
+  }
+  .cmd-btn:hover { background: var(--bg3); color: var(--text); border-left-color: var(--dim); }
+  .cmd-btn.active { background: rgba(59,158,255,.07); color: var(--accent); border-left-color: var(--accent); }
+  .cmd-icon { font-size: .88rem; width: 16px; text-align: center; }
+  .cmd-label { flex: 1; }
+  .cmd-db {
+    font-size: .54rem; padding: .06rem .24rem;
+    border: 1px solid var(--dim); border-radius: 2px;
+    color: var(--dim); letter-spacing: .04em; white-space: nowrap;
+  }
+  .cmd-db.quarterly { border-color: rgba(59,158,255,.3); color: rgba(59,158,255,.7); }
+  .cmd-db.monthly   { border-color: rgba(240,180,41,.4); color: var(--accent2); }
+  .cmd-db.annual    { border-color: rgba(52,209,122,.3); color: rgba(52,209,122,.7); }
+
+  /* ── 参数区 ───────────────── */
+  .params-bar {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: .7rem 1.5rem;
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  }
+  .param-group {
+    display: flex; flex-direction: column; gap: .18rem;
+  }
+  .param-label {
+    font-size: .58rem; color: var(--muted);
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+  .param-input {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: .78rem;
+    padding: .32rem .6rem;
+    width: 170px;
+    transition: border-color .15s;
+  }
+  .param-input:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(59,158,255,.12);
+  }
+  select.param-input { cursor: pointer; }
+  .run-btn {
+    background: linear-gradient(135deg, #2277cc 0%, #3b9eff 100%);
+    border: none; border-radius: 4px;
+    color: #040d16; cursor: pointer;
+    font-family: var(--mono); font-size: .78rem; font-weight: 700;
+    padding: .42rem 1.3rem;
+    letter-spacing: .06em;
+    transition: all .15s;
+    margin-left: auto;
+    display: flex; align-items: center; gap: .4rem;
+    box-shadow: 0 2px 12px rgba(59,158,255,.2);
+  }
+  .run-btn:hover { box-shadow: 0 4px 20px rgba(59,158,255,.35); transform: translateY(-1px); }
+  .run-btn:disabled { background: var(--dim); box-shadow: none; transform: none; cursor: not-allowed; color: var(--muted); }
+  .run-btn .spinner {
+    width: 11px; height: 11px;
+    border: 2px solid rgba(4,13,22,.3);
+    border-top-color: #040d16;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    display: none;
+  }
+  .run-btn.loading .spinner { display: block; }
+  .run-btn.loading .btn-text { opacity: .6; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── 输出区 ───────────────── */
+  .output-area {
+    overflow: auto;
+    padding: 1.4rem;
+    display: flex; flex-direction: column; gap: 1.1rem;
+  }
+
+  /* 状态行 */
+  .status-row {
+    display: flex; align-items: center; gap: .6rem;
+    font-size: .7rem; color: var(--muted);
+  }
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--dim);
+  }
+  .status-dot.ok      { background: var(--success); box-shadow: 0 0 6px var(--success); }
+  .status-dot.err     { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+  .status-dot.loading { background: var(--warn); animation: pulse 1s infinite; }
+
+  /* 摘要卡片 */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+    gap: .75rem;
+  }
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: .9rem 1.1rem;
+    animation: fadeIn .3s ease;
+    position: relative; overflow: hidden;
+  }
+  .stat-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: .4;
+  }
+  .stat-card-label { font-size: .58rem; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin-bottom: .25rem; }
+  .stat-card-value { font-size: 1.35rem; font-weight: 600; color: var(--accent2); }
+  .stat-card-sub   { font-size: .66rem; color: var(--muted); margin-top: .2rem; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* 图表容器 */
+  .chart-box {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.2rem;
+    animation: fadeIn .4s ease;
+  }
+  .chart-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .chart-title { font-size: .78rem; color: var(--text); font-weight: 600; }
+  .chart-meta  { font-size: .63rem; color: var(--muted); }
+  canvas { max-height: 300px; }
+
+  /* 数据表格 */
+  .table-box {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    animation: fadeIn .5s ease;
+  }
+  .table-header {
+    padding: .65rem 1.2rem;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .table-title { font-size: .74rem; font-weight: 600; }
+  .export-btn {
+    font-size: .63rem; padding: .18rem .55rem;
+    border: 1px solid var(--border); border-radius: 3px;
+    background: none; color: var(--muted); cursor: pointer;
+    font-family: var(--mono); transition: all .15s;
+    text-decoration: none; display: inline-block;
+  }
+  .export-btn:hover { border-color: var(--accent); color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: .74rem; }
+  th {
+    background: var(--bg3); padding: .48rem 1.2rem;
+    text-align: left; font-weight: 600; font-size: .62rem;
+    letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted); border-bottom: 1px solid var(--border);
+  }
+  td { padding: .42rem 1.2rem; border-bottom: 1px solid rgba(26,46,69,.5); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg3); }
+  .analyze-btn {
+    font-size: .6rem; padding: .14rem .48rem;
+    border: 1px solid var(--accent); border-radius: 3px;
+    background: none; color: var(--accent); cursor: pointer;
+    font-family: var(--mono); transition: all .15s; white-space: nowrap;
+  }
+  .analyze-btn:hover { background: var(--accent); color: #040d16; font-weight: 600; }
+  .expand-btn { border-color: var(--accent2); color: var(--accent2); }
+  .expand-btn:hover { background: var(--accent2); color: #040d16; }
+
+  /* 树面包屑 */
+  .tree-breadcrumb {
+    padding: .55rem 1.2rem;
+    font-size: .68rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    display: flex; align-items: center; flex-wrap: wrap; gap: .3rem;
+  }
+  .crumb-root {
+    cursor: pointer; color: var(--accent);
+    padding: .1rem .32rem; border-radius: 3px;
+    transition: background .15s;
+  }
+  .crumb-root:hover { background: rgba(59,158,255,.12); }
+  .crumb-item {
+    cursor: pointer; color: var(--accent);
+    padding: .1rem .32rem; border-radius: 3px;
+    transition: background .15s;
+  }
+  .crumb-item:hover { background: rgba(59,158,255,.12); }
+  .crumb-item.current { color: var(--text); cursor: default; }
+  .crumb-sep { color: var(--dim); }
+
+  /* 树搜索栏 */
+  .tree-search-bar {
+    padding: .55rem 1.2rem;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: .6rem;
+  }
+  .tree-search-input {
+    flex: 1;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: .73rem;
+    padding: .28rem .55rem;
+    transition: border-color .15s;
+  }
+  .tree-search-input:focus { outline: none; border-color: var(--accent); }
+  .tree-search-clear {
+    font-size: .63rem; padding: .18rem .46rem;
+    border: 1px solid var(--border); border-radius: 3px;
+    background: none; color: var(--muted); cursor: pointer;
+    font-family: var(--mono);
+  }
+  .tree-search-clear:hover { color: var(--text); }
+
+  /* 树统计栏 */
+  .tree-stats-bar {
+    padding: .38rem 1.2rem;
+    font-size: .62rem; color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 1rem;
+  }
+  .hl { color: var(--warn); }
+
+  .pipeline-btn {
+    font-size: .63rem; padding: .14rem .48rem;
+    border: 1px solid var(--border); border-radius: 3px;
+    background: none; color: var(--muted); cursor: pointer;
+    font-family: var(--mono); transition: all .15s;
+  }
+  .pipeline-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* 空态 */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 1rem;
+    height: 100%; min-height: 300px;
+    color: var(--dim);
+  }
+  .empty-icon { font-size: 2.2rem; opacity: .25; }
+  .empty-text { font-size: .76rem; text-align: center; line-height: 1.7; color: var(--muted); }
+  .empty-code {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 4px; padding: .38rem .75rem;
+    font-size: .7rem; color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  /* ── 底部数据管道 ────────── */
+  footer {
+    border-top: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .footer-main {
+    padding: .45rem 1.5rem;
+    font-size: .6rem; color: var(--dim);
+    display: flex; align-items: center; gap: 1rem;
+    border-bottom: 1px solid rgba(26,46,69,.5);
+  }
+  .footer-link { color: var(--muted); text-decoration: none; transition: color .15s; }
+  .footer-link:hover { color: var(--accent); }
+
+  /* 数据管道条 */
+  .pipeline-bar {
+    padding: .55rem 1.5rem;
+    display: flex; align-items: center; gap: 0;
+    background: rgba(59,158,255,.03);
+    position: relative; overflow: hidden;
+  }
+  .pipeline-bar::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent 0%, var(--accent) 30%, var(--accent2) 70%, transparent 100%);
+    opacity: .35;
+  }
+  .pipeline-node {
+    display: flex; flex-direction: column; gap: .12rem;
+    flex-shrink: 0;
+  }
+  .pipeline-node-label {
+    font-size: .56rem; color: var(--muted);
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+  .pipeline-node-name {
+    font-size: .72rem; color: var(--text); font-weight: 600;
+    display: flex; align-items: center; gap: .4rem;
+  }
+  .pipeline-node-name .node-badge {
+    font-size: .54rem; padding: .08rem .28rem;
+    border: 1px solid rgba(59,158,255,.4);
+    border-radius: 2px; color: var(--accent);
+    background: rgba(59,158,255,.06);
+  }
+  .pipeline-arrow-wrap {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: .22rem;
+    padding: 0 .8rem;
+  }
+  .pipeline-arrow-track {
+    display: flex; align-items: center;
+    width: 100%; gap: 0;
+  }
+  .pipeline-arrow-line {
+    flex: 1; height: 1px;
+    background: linear-gradient(90deg, var(--dim), var(--accent2));
+  }
+  .pipeline-arrow-head {
+    color: var(--accent2); font-size: .8rem; opacity: .8; line-height: 1;
+  }
+  .pipeline-arrow-label {
+    font-size: .56rem; color: var(--dim);
+    letter-spacing: .06em;
+    white-space: nowrap;
+  }
+  .pipeline-cta {
+    flex-shrink: 0;
+    display: flex; align-items: center; gap: .5rem;
+  }
+  .pipeline-cta-btn {
+    font-size: .68rem; padding: .3rem .75rem;
+    border: 1px solid var(--accent2); border-radius: 3px;
+    background: rgba(240,180,41,.06); color: var(--accent2);
+    cursor: pointer; font-family: var(--mono);
+    transition: all .15s; font-weight: 600;
+    text-decoration: none; display: inline-block;
+  }
+  .pipeline-cta-btn:hover {
+    background: rgba(240,180,41,.14);
+    box-shadow: 0 0 12px rgba(240,180,41,.2);
+  }
+</style>
+</head>
+<body>
+
+<!-- ── 顶栏 ── -->
+<header>
+  <div class="logo">
+    <div class="logo-emblem"></div>
+    <div class="logo-text">
+      <div class="logo-main">OpenCLI · 美国经济分析局数据采集台</div>
+      <div class="logo-sub">U.S. Bureau of Economic Analysis · bea-stats v1.0</div>
+    </div>
+    <span class="badge region">BEA</span>
+    <span class="badge">1929–</span>
+  </div>
+  <div class="author">天津财经大学统计学院　龚凤乾 &nbsp;<span id="keyStatus" style="font-size:.6rem;padding:.1rem .35rem;border-radius:2px;border:1px solid var(--dim);color:var(--dim)">KEY …</span></div>
+</header>
+
+<!-- ── 主体 ── -->
+<main>
+
+  <!-- 左侧命令列表 -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-title">Commands / 命令</div>
+      <div class="sidebar-region">美国经济分析局（BEA）</div>
+    </div>
+
+    <div class="sidebar-scroll">
+
+      <div class="cmd-group">
+        <div class="cmd-group-label">国民账户（NIPA）</div>
+        <button class="cmd-btn active" onclick="selectCmd('gdp', this)">
+          <span class="cmd-icon">📈</span>
+          <span class="cmd-label">国内生产总值 (GDP)</span>
+          <span class="cmd-db annual">年度</span>
+        </button>
+        <button class="cmd-btn" onclick="selectCmd('gdp_q', this)">
+          <span class="cmd-icon">📊</span>
+          <span class="cmd-label">国内生产总值 (GDP)</span>
+          <span class="cmd-db quarterly">季度</span>
+        </button>
+        <button class="cmd-btn" onclick="selectCmd('pce', this)">
+          <span class="cmd-icon">🛒</span>
+          <span class="cmd-label">个人消费支出 (PCE)</span>
+          <span class="cmd-db annual">年度</span>
+        </button>
+        <button class="cmd-btn" onclick="selectCmd('gdi', this)">
+          <span class="cmd-icon">💰</span>
+          <span class="cmd-label">国内收入总额 (GDI)</span>
+          <span class="cmd-db annual">年度</span>
+        </button>
+        <button class="cmd-btn" onclick="selectCmd('net_exports', this)">
+          <span class="cmd-icon">🚢</span>
+          <span class="cmd-label">净出口（贸易差额）</span>
+          <span class="cmd-db annual">年度</span>
+        </button>
+      </div>
+
+      <div class="cmd-group">
+        <div class="cmd-group-label">价格与通胀</div>
+        <button class="cmd-btn" onclick="selectCmd('pce_deflator', this)">
+          <span class="cmd-icon">📉</span>
+          <span class="cmd-label">PCE 价格指数（通胀）</span>
+          <span class="cmd-db annual">年度</span>
+        </button>
+        <button class="cmd-btn" onclick="selectCmd('gdp_deflator', this)">
+          <span class="cmd-icon">📐</span>
+          <span class="cmd-label">GDP 平减指数</span>
+          <span class="cmd-db annual">年度</span>
+        </button>
+      </div>
+
+      <div class="cmd-group">
+        <div class="cmd-group-label">收入与储蓄</div>
+        <button class="cmd-btn" onclick="selectCmd('personal_income', this)">
+          <span class="cmd-icon">👤</span>
+          <span class="cmd-label">个人收入</span>
+          <span class="cmd-db annual">年度</span>
+        </button>
+        <button class="cmd-btn" onclick="selectCmd('savings_rate', this)">
+          <span class="cmd-icon">🏦</span>
+          <span class="cmd-label">个人储蓄率（%）</span>
+          <span class="cmd-db annual">年度</span>
+        </button>
+        <button class="cmd-btn" onclick="selectCmd('corp_profits', this)">
+          <span class="cmd-icon">🏢</span>
+          <span class="cmd-label">公司利润（税前）</span>
+          <span class="cmd-db annual">年度</span>
+        </button>
+      </div>
+
+      <div class="cmd-group">
+        <div class="cmd-group-label">投资与政府</div>
+        <button class="cmd-btn" onclick="selectCmd('gross_investment', this)">
+          <span class="cmd-icon">🔨</span>
+          <span class="cmd-label">国内私人总投资</span>
+          <span class="cmd-db annual">年度</span>
+        </button>
+        <button class="cmd-btn" onclick="selectCmd('gov_expenditure', this)">
+          <span class="cmd-icon">🏛</span>
+          <span class="cmd-label">政府支出与投资</span>
+          <span class="cmd-db annual">年度</span>
+        </button>
+      </div>
+
+      <div class="cmd-group">
+        <div class="cmd-group-label">通用查询</div>
+        <button class="cmd-btn" onclick="selectCmd('custom_annual', this)">
+          <span class="cmd-icon">🗂</span>
+          <span class="cmd-label">自定义年度查询</span>
+          <span class="cmd-db annual">年度</span>
+        </button>
+        <button class="cmd-btn" onclick="selectCmd('custom_quarterly', this)">
+          <span class="cmd-icon">📅</span>
+          <span class="cmd-label">自定义季度查询</span>
+          <span class="cmd-db quarterly">季度</span>
+        </button>
+        <button class="cmd-btn" onclick="selectCmd('custom_monthly', this)">
+          <span class="cmd-icon">🔢</span>
+          <span class="cmd-label">自定义月度查询</span>
+          <span class="cmd-db monthly">月度</span>
+        </button>
+      </div>
+
+      <div class="cmd-group">
+        <div class="cmd-group-label">工具</div>
+        <button class="cmd-btn" onclick="selectCmd('tree', this)">
+          <span class="cmd-icon">🌲</span>
+          <span class="cmd-label">指标目录浏览 (tree)</span>
+          <span class="cmd-db">全目录</span>
+        </button>
+      </div>
+
+    </div><!-- end sidebar-scroll -->
+  </aside>
+
+  <!-- 参数栏 -->
+  <div class="params-bar" id="paramsBar">
+    <!-- 数据集 -->
+    <div class="param-group" id="pgDataset" style="display:none">
+      <div class="param-label">--dataset 数据集</div>
+      <select class="param-input" id="paramDataset">
+        <option value="NIPA">NIPA · 国民收入与产品账户</option>
+        <option value="NIUnderlyingDetail">NIUnderlyingDetail · 明细账户</option>
+        <option value="MNE">MNE · 跨国企业</option>
+        <option value="FixedAssets">FixedAssets · 固定资产</option>
+        <option value="ITA">ITA · 国际交易账户</option>
+        <option value="IIP">IIP · 国际投资头寸</option>
+        <option value="InputOutput">InputOutput · 投入产出表</option>
+        <option value="GDPbyIndustry">GDPbyIndustry · 分行业GDP</option>
+        <option value="Regional">Regional · 地区经济数据</option>
+      </select>
+    </div>
+    <!-- 表名 -->
+    <div class="param-group" id="pgTable">
+      <div class="param-label">--table 表名</div>
+      <input class="param-input" id="paramTable" type="text" placeholder="如 T10101" value="T10101">
+    </div>
+    <!-- 行代码 -->
+    <div class="param-group" id="pgLine">
+      <div class="param-label">--line 行代码</div>
+      <input class="param-input" id="paramLine" type="text" placeholder="如 1（全部留空）" value="1" style="width:130px">
+    </div>
+    <!-- 频率 -->
+    <div class="param-group" id="pgFreq">
+      <div class="param-label">-f 频率</div>
+      <select class="param-input" id="paramFreq" style="width:120px">
+        <option value="A">A · 年度</option>
+        <option value="Q">Q · 季度</option>
+        <option value="M">M · 月度</option>
+      </select>
+    </div>
+    <!-- 年份范围 -->
+    <div class="param-group" id="pgYear" style="display:none">
+      <div class="param-label">--year 年份（X = 全部）</div>
+      <input class="param-input" id="paramYear" type="text" placeholder="X = 全部年份" value="X" style="width:140px">
+    </div>
+    <!-- 输出格式 -->
+    <div class="param-group" id="pgFmt">
+      <div class="param-label">-o 输出</div>
+      <select class="param-input" id="paramFmt" style="width:110px">
+        <option value="chart">图表</option>
+        <option value="table">表格</option>
+        <option value="csv">CSV（导出）</option>
+      </select>
+    </div>
+    <!-- tree 专用：参数名 -->
+    <div class="param-group" id="pgParamName" style="display:none">
+      <div class="param-label">--param 参数名</div>
+      <select class="param-input" id="paramParamName">
+        <option value="TableName">TableName · 表名列表</option>
+        <option value="Frequency">Frequency · 频率</option>
+        <option value="Year">Year · 年份</option>
+      </select>
+    </div>
+    <button class="run-btn" id="runBtn" onclick="runCommand()">
+      <div class="spinner"></div>
+      <span class="btn-text">▶ 执行</span>
+    </button>
+  </div>
+
+  <!-- 输出区 -->
+  <div class="output-area" id="outputArea">
+    <div class="empty-state">
+      <div class="empty-icon">⌗</div>
+      <div class="empty-text">
+        选择左侧命令，配置参数后点击执行<br>
+        数据来源：美国经济分析局（BEA）· 1929年至今
+      </div>
+      <div class="empty-code" id="hintCode">opencli bea-stats gdp --table T10101 --line 1 -f A</div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ── 底部数据管道 ── -->
+<footer>
+  <div class="footer-main">
+    <span>OpenCLI · bea-stats</span>
+    <span class="badge">v1.0</span>
+    <a href="https://apps.bea.gov" target="_blank" class="footer-link">apps.bea.gov ↗</a>
+    <a href="https://apps.bea.gov/api/signup/" target="_blank" class="footer-link">申请 API Key ↗</a>
+    <a href="https://cli-gong.netlify.app" target="_blank" class="footer-link">统计多工具台（CLI-Anything）↗</a>
+  </div>
+  <div class="pipeline-bar">
+    <div class="pipeline-node">
+      <div class="pipeline-node-label">当前平台</div>
+      <div class="pipeline-node-name">
+        OpenCLI 采集台
+        <span class="node-badge">BEA</span>
+      </div>
+    </div>
+    <div class="pipeline-arrow-wrap">
+      <div class="pipeline-arrow-track">
+        <div class="pipeline-arrow-line"></div>
+        <div class="pipeline-arrow-head">▶</div>
+      </div>
+      <div class="pipeline-arrow-label">数据管道 · JSON → pipeline</div>
+    </div>
+    <div class="pipeline-cta">
+      <button class="pipeline-cta-btn" onclick="pipelineExport()">→ 传至统计多工具台</button>
+      <a href="https://cli-gong.netlify.app" target="_blank" class="pipeline-cta-btn" style="opacity:.6">
+        CLI-Anything ↗
+      </a>
+    </div>
+  </div>
+</footer>
+
+<script>
+// ── BEA 指标中文翻译表 ────────────────────────────────────────
+// BEA API 返回的英文指标描述，在此映射为中文
+const BEA_ZH = {
+  // T10101 - GDP 支出法
+  'Gross domestic product':                           '国内生产总值',
+  'Personal consumption expenditures':                '个人消费支出',
+  'Goods':                                            '商品',
+  'Durable goods':                                    '耐用品',
+  'Nondurable goods':                                 '非耐用品',
+  'Services':                                         '服务',
+  'Gross private domestic investment':                '国内私人总投资',
+  'Fixed investment':                                 '固定投资',
+  'Nonresidential':                                   '非住宅类',
+  'Structures':                                       '建筑物',
+  'Equipment':                                        '设备',
+  'Intellectual property products':                   '知识产权产品',
+  'Residential':                                      '住宅类',
+  'Change in private inventories':                    '私人库存变动',
+  'Net exports of goods and services':                '商品与服务净出口',
+  'Exports':                                          '出口',
+  'Imports':                                          '进口',
+  'Government consumption expenditures and gross investment': '政府消费支出与总投资',
+  'Federal':                                          '联邦政府',
+  'National defense':                                 '国防',
+  'Nondefense':                                       '非国防',
+  'State and local':                                  '州及地方政府',
+  // T20100 - PCE
+  'Personal income':                                  '个人收入',
+  'Compensation of employees':                        '雇员报酬',
+  'Wages and salaries':                               '工资与薪酬',
+  'Supplements to wages and salaries':                '工资薪酬补充',
+  'Employer contributions for employee pension':      '雇主养老金缴款',
+  'Employer contributions for government social insurance': '雇主社会保险缴款',
+  'Proprietors\' income':                             '业主收入',
+  'Rental income of persons':                         '个人租金收入',
+  'Personal income receipts on assets':               '资产性个人收入',
+  'Personal interest income':                         '个人利息收入',
+  'Personal dividend income':                         '个人股息收入',
+  'Personal current transfer receipts':               '个人转移性收入',
+  'Government social benefits to persons':            '政府社会福利',
+  'Less: Personal current taxes':                     '减：个人所得税',
+  'Disposable personal income':                       '可支配个人收入',
+  'Personal outlays':                                 '个人支出',
+  'Personal saving':                                  '个人储蓄',
+  'Personal saving as a percentage of disposable personal income': '个人储蓄率（占可支配收入%）',
+  // T61000 - Corp profits
+  'Profits before tax (without IVA and CCAdj)':       '税前利润（不含库存与资本消耗调整）',
+  'Corporate profits with IVA and CCAdj':             '公司利润（含IVA与CCAdj）',
+  'Corporate profits before tax':                     '公司税前利润',
+  'Corporate profits after tax':                      '公司税后利润',
+  'Taxes on corporate income':                        '公司所得税',
+  // T10109 - Deflator
+  'Gross domestic product, current dollars':          '国内生产总值（现价）',
+  'Gross domestic product, chained dollars':          '国内生产总值（链式价格）',
+  'Gross domestic product, implicit price deflator':  'GDP 隐含价格平减指数',
+  // PCE Deflator
+  'Personal consumption expenditures (implicit price deflator)': 'PCE 隐含价格平减指数',
+};
+
+function zh(str) {
+  if (!str) return str;
+  for (const [en, cn] of Object.entries(BEA_ZH)) {
+    if (str.toLowerCase().includes(en.toLowerCase())) return cn + '  [' + str.slice(0,28) + ']';
+  }
+  return str;
+}
+
+// ── 命令配置 ─────────────────────────────────────────────────
+// BEA NIPA 主要表单参考：
+//   T10101 = GDP（支出法，亿美元，年/季）
+//   T10105 = GDP（贡献度，年/季）
+//   T10109 = GDP 平减指数
+//   T20100 = 个人收入与支出（年/季/月）
+//   T20600 = 个人储蓄率（年/季/月）
+//   T61000 = 公司利润（年/季）
+const CMD_CONFIG = {
+  gdp:              { dataset:'NIPA', tableName:'T10101', lineCode:'1', freq:'A', label:'国内生产总值（GDP，十亿美元）' },
+  gdp_q:            { dataset:'NIPA', tableName:'T10101', lineCode:'1', freq:'Q', label:'国内生产总值季度（GDP，十亿美元）' },
+  pce:              { dataset:'NIPA', tableName:'T10101', lineCode:'2', freq:'A', label:'个人消费支出（PCE，十亿美元）' },
+  gdi:              { dataset:'NIPA', tableName:'T10301', lineCode:'1', freq:'A', label:'国内收入总额（GDI，十亿美元）' },
+  net_exports:      { dataset:'NIPA', tableName:'T10101', lineCode:'15', freq:'A', label:'商品与服务净出口（十亿美元）' },
+  pce_deflator:     { dataset:'NIPA', tableName:'T20804', lineCode:'1', freq:'A', label:'PCE 价格指数（通胀指标）' },
+  gdp_deflator:     { dataset:'NIPA', tableName:'T10109', lineCode:'3', freq:'A', label:'GDP 平减指数' },
+  personal_income:  { dataset:'NIPA', tableName:'T20100', lineCode:'1', freq:'A', label:'个人收入（十亿美元）' },
+  savings_rate:     { dataset:'NIPA', tableName:'T20600', lineCode:'1', freq:'A', label:'个人储蓄率（%）' },
+  corp_profits:     { dataset:'NIPA', tableName:'T61000', lineCode:'1', freq:'A', label:'公司利润税前（十亿美元）' },
+  gross_investment: { dataset:'NIPA', tableName:'T10101', lineCode:'7', freq:'A', label:'国内私人总投资（十亿美元）' },
+  gov_expenditure:  { dataset:'NIPA', tableName:'T10101', lineCode:'22', freq:'A', label:'政府支出与投资（十亿美元）' },
+  custom_annual:    { dataset:'NIPA', tableName:'T10101', lineCode:'1', freq:'A', label:'自定义年度查询' },
+  custom_quarterly: { dataset:'NIPA', tableName:'T10101', lineCode:'1', freq:'Q', label:'自定义季度查询' },
+  custom_monthly:   { dataset:'NIPA', tableName:'T20100', lineCode:'1', freq:'M', label:'自定义月度查询' },
+  tree:             { dataset:'NIPA', label:'BEA 指标目录', type:'tree' },
+};
+
+let currentCmd    = 'gdp';
+let chartInstance = null;
+window._lastNodes = null;
+window._treeSearchKeyword = '';
+
+// ── 页面加载时检测 API Key 状态 ──────────────────────────────
+async function checkApiKey() {
+  const el = document.getElementById('keyStatus');
+  try {
+    const res  = await fetch('/.netlify/functions/bea-proxy?m=getDatasets');
+    const json = await res.json();
+    if (res.status === 503 || (json.error && json.error.includes('BEA_API_KEY'))) {
+      el.textContent = 'KEY 未配置';
+      el.style.borderColor = '#ef4444';
+      el.style.color = '#ef4444';
+      el.title = '请在 Netlify 环境变量中设置 BEA_API_KEY';
+    } else if (json.error) {
+      // BEA 服务本身的业务错误，Key 本身应是有效的
+      el.textContent = 'KEY ✓';
+      el.style.borderColor = 'rgba(52,209,122,.5)';
+      el.style.color = '#34d17a';
+      el.title = 'BEA API Key 已配置（BEA 服务返回：' + json.error + '）';
+    } else {
+      el.textContent = 'KEY ✓';
+      el.style.borderColor = 'rgba(52,209,122,.5)';
+      el.style.color = '#34d17a';
+      el.title = 'BEA API Key 有效';
+    }
+  } catch {
+    el.textContent = 'KEY ?';
+    el.title = '网络检测失败';
+  }
+}
+checkApiKey();
+
+// ── 切换命令 ──────────────────────────────────────────────────
+function selectCmd(cmd, el) {
+  currentCmd = cmd;
+  document.querySelectorAll('.cmd-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+
+  const cfg    = CMD_CONFIG[cmd];
+  const isTree = cmd === 'tree';
+  const isCustom = cmd.startsWith('custom_');
+
+  // 参数栏显示控制
+  // pgLine 和 pgYear 在所有非 tree 模式下均显示，方便用户调整
+  document.getElementById('pgDataset').style.display   = isTree ? '' : 'none';
+  document.getElementById('pgTable').style.display     = isTree ? 'none' : '';
+  document.getElementById('pgLine').style.display      = isTree ? 'none' : '';
+  document.getElementById('pgFreq').style.display      = isTree ? 'none' : '';
+  document.getElementById('pgYear').style.display      = isTree ? 'none' : '';
+  document.getElementById('pgFmt').style.display       = isTree ? 'none' : '';
+  document.getElementById('pgParamName').style.display = isTree ? '' : 'none';
+
+  if (cfg.tableName) document.getElementById('paramTable').value = cfg.tableName;
+  if (cfg.lineCode)  document.getElementById('paramLine').value  = cfg.lineCode;
+  if (cfg.freq)      document.getElementById('paramFreq').value  = cfg.freq;
+  if (cfg.dataset)   document.getElementById('paramDataset').value = cfg.dataset;
+
+  const hint = document.getElementById('hintCode');
+  if (hint) {
+    if (isTree) {
+      hint.textContent = `opencli bea-stats tree --dataset ${cfg.dataset || 'NIPA'}`;
+    } else {
+      hint.textContent =
+        `opencli bea-stats ${cmd} --table ${cfg.tableName||''} --line ${cfg.lineCode||'1'} -f ${cfg.freq||'A'}`;
+    }
+  }
+}
+
+// ── 执行命令 ──────────────────────────────────────────────────
+async function runCommand() {
+  const btn = document.getElementById('runBtn');
+  btn.classList.add('loading'); btn.disabled = true;
+  setStatus('loading', '正在连接 BEA 数据接口…');
+  try {
+    if (currentCmd === 'tree') await fetchTree();
+    else await fetchData();
+  } catch (e) {
+    setStatus('err', '请求失败：' + e.message);
+    showError(e.message);
+  }
+  btn.classList.remove('loading'); btn.disabled = false;
+}
+
+// ── 获取数据 ──────────────────────────────────────────────────
+// ★ BEA NIPA 数据集不支持 LineCode 服务端过滤，必须拉取整表再在前端按 LineNumber 筛选
+// ★ BEA 全年份参数用 X（比 ALL 更可靠）
+async function fetchData() {
+  const cfg     = CMD_CONFIG[currentCmd];
+  const dataset = document.getElementById('paramDataset')?.value || cfg.dataset || 'NIPA';
+  const table   = document.getElementById('paramTable')?.value   || cfg.tableName;
+  const lineStr = (document.getElementById('paramLine')?.value   || cfg.lineCode || '1').trim();
+  const freq    = document.getElementById('paramFreq')?.value    || cfg.freq || 'A';
+  // 前端输入 ALL 自动转换为 X
+  let year = (document.getElementById('paramYear')?.value || 'X').trim().toUpperCase();
+  if (year === 'ALL') year = 'X';
+  const fmt = document.getElementById('paramFmt')?.value || 'chart';
+
+  // 解析行号（支持逗号分隔，如 "1,2,3"；空或 ALL 表示取第一行）
+  const lineNums = lineStr === '' || lineStr.toUpperCase() === 'ALL'
+    ? []
+    : lineStr.split(',').map(s => String(parseInt(s.trim(), 10))).filter(Boolean);
+
+  const params = `dataset=${encodeURIComponent(dataset)}` +
+                 `&tableName=${encodeURIComponent(table)}` +
+                 `&frequency=${encodeURIComponent(freq)}` +
+                 `&year=${encodeURIComponent(year)}`;
+  const url = `/.netlify/functions/bea-proxy?${params}`;
+
+  let rawData, debugInfo;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    let res;
+    try { res = await fetch(url, { signal: controller.signal }); }
+    finally { clearTimeout(timer); }
+    const json = await res.json();
+
+    if (json.error) {
+      if (res.status === 503 || json.error.includes('BEA_API_KEY')) {
+        setStatus('err', 'API Key 未配置');
+        showError(
+          '⚠ BEA_API_KEY 尚未配置<br><br>' +
+          '请前往 Netlify Dashboard → <strong>Site settings → Environment variables</strong>，' +
+          '添加 <code>BEA_API_KEY</code>。<br><br>' +
+          '免费申请：<a href="https://apps.bea.gov/api/signup/" target="_blank" style="color:var(--accent)">apps.bea.gov/api/signup/ ↗</a>'
+        );
+        return;
+      }
+      // BEA 返回的具体错误信息（含表名不存在、参数错误等）
+      const detail = json.detail ? '<br><code style="font-size:.65rem;word-break:break-all">' + json.detail + '</code>' : '';
+      setStatus('err', 'BEA 返回错误');
+      showError('⚠ BEA API 错误：<strong>' + json.error + '</strong>' + detail +
+        '<br><br><small>常见原因：表名格式错误（尝试去掉 T 前缀，如 10101）、Key 超速率限制、或该表不支持所选频率</small>');
+      return;
+    }
+
+    debugInfo = json.debug || null;
+    if (debugInfo) console.info('[BEA debug]', debugInfo);
+    rawData = json.data || [];
+  } catch (e) {
+    setStatus('err', 'API 请求失败：' + e.message);
+    showError('数据获取失败：<br><code style="font-size:.7rem">' + e.message + '</code>');
+    return;
+  }
+
+  if (!rawData.length) {
+    setStatus('err', `表 ${table} 在当前参数下无数据`);
+    const debugUrl = `/.netlify/functions/bea-proxy?m=debug&table=${encodeURIComponent(table)}&freq=${encodeURIComponent(freq)}&year=${encodeURIComponent(year)}`;
+    const dbgHtml = debugInfo
+      ? `<details style="margin-top:.8rem;font-size:.65rem;color:var(--muted)"><summary style="cursor:pointer;color:var(--accent)">▶ 显示 BEA 原始响应诊断</summary>` +
+        `<pre style="margin-top:.4rem;overflow:auto;max-height:200px;background:var(--bg3);padding:.5rem;border-radius:4px;font-size:.6rem">` +
+        JSON.stringify(debugInfo, null, 2) + `</pre></details>`
+      : '';
+    showError(
+      `表 <strong>${table}</strong> · 频率 <strong>${freq}</strong> · 年份 <strong>${year}</strong> 无数据<br>` +
+      `<small>请检查表名是否正确，或尝试不同的频率（A/Q/M）</small><br><br>` +
+      `<a href="${debugUrl}" target="_blank" style="color:var(--accent);font-size:.7rem">` +
+      `🔍 在新标签页查看 BEA 原始响应 ↗</a>` +
+      dbgHtml
+    );
+    return;
+  }
+
+  // ── 客户端按 LineNumber 过滤 ────────────────────────────────
+  const nodes = parseBeaData(rawData, freq, lineNums);
+
+  if (!nodes.length) {
+    // 无对应行时，列出该表有哪些行供用户参考
+    const availLines = [...new Set(rawData.map(r => r.LineNumber))].sort((a,b)=>+a-+b);
+    const lineDescs  = availLines.slice(0, 30).map(ln => {
+      const row = rawData.find(r => r.LineNumber === ln);
+      return `<option value="${ln}">行 ${ln}：${row?.LineDescription || ''}</option>`;
+    }).join('');
+    showError(
+      `行号 <strong>${lineStr}</strong> 在表 ${table} 中不存在。<br><br>` +
+      `该表共 ${availLines.length} 行，请从下方选择正确行号：<br>` +
+      `<select style="margin-top:.5rem;background:var(--bg3);color:var(--text);border:1px solid var(--border);` +
+      `border-radius:4px;padding:.3rem;font-family:var(--mono);font-size:.72rem;width:100%" ` +
+      `onchange="document.getElementById('paramLine').value=this.value;this.blur()">` +
+      `<option>-- 点击选择行号 --</option>${lineDescs}</select>`
+    );
+    setStatus('err', `行 ${lineStr} 不存在，请从下拉框选择正确行号`);
+    return;
+  }
+
+  const lineLabel = lineNums.length ? `Line ${lineNums.join(',')}` : `Line 1`;
+  const label = cfg.label || `${table} · ${lineLabel}`;
+  setStatus('ok', `已获取 ${nodes.length} 条记录 · 表: ${table} · ${lineLabel} · 频率: ${freq}`);
+
+  if (fmt === 'csv')        downloadCSV(nodes, label);
+  else if (fmt === 'table') renderTable(nodes, label);
+  else                      renderChart(nodes, label);
+}
+
+// ── 解析 BEA 数据（客户端按 LineNumber 过滤）────────────────────
+// lineNums: 字符串数组 ['1','2']；为空时默认取 LineNumber==='1' 的行
+function parseBeaData(data, freq, lineNums) {
+  if (!Array.isArray(data) || data.length === 0) return [];
+
+  const filter = (lineNums && lineNums.length > 0) ? lineNums : ['1'];
+
+  return data
+    .filter(row => filter.includes(String(row.LineNumber || '').trim()))
+    .map(row => {
+      const val = parseFloat((row.DataValue || '').replace(/,/g, ''));
+      return {
+        period:  row.TimePeriod      || '',
+        value:   isNaN(val) ? null   : val,
+        lineNum: row.LineNumber      || '',
+        desc:    row.LineDescription || '',
+      };
+    })
+    .filter(n => n.value !== null && n.period)
+    .sort((a, b) => a.period.localeCompare(b.period));
+}
+
+// ── 获取目录树 ──────────────────────────────────────────────────
+async function fetchTree() {
+  const dataset   = document.getElementById('paramDataset')?.value || 'NIPA';
+  const paramName = document.getElementById('paramParamName')?.value || 'TableName';
+  window._treeSearchKeyword = '';
+
+  const url = `/.netlify/functions/bea-proxy?m=getTree&dataset=${encodeURIComponent(dataset)}&paramName=${encodeURIComponent(paramName)}`;
+
+  let nodes;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    let res;
+    try { res = await fetch(url, { signal: controller.signal }); }
+    finally { clearTimeout(timer); }
+    const json = await res.json();
+    if (json.error) {
+      if (res.status === 503 || json.error.includes('BEA_API_KEY')) {
+        setStatus('err', 'API Key 未配置');
+        showError('⚠ BEA_API_KEY 尚未配置<br><br>' +
+          '请前往 Netlify Dashboard → <strong>Site settings → Environment variables</strong>，' +
+          '添加变量 <code>BEA_API_KEY</code>。<br><br>' +
+          '免费申请：<a href="https://apps.bea.gov/api/signup/" target="_blank" style="color:var(--accent)">apps.bea.gov/api/signup/ ↗</a>');
+        return;
+      }
+      throw new Error(json.error + (json.detail ? '  |  ' + json.detail : ''));
+    }
+    nodes = json;
+    if (!Array.isArray(nodes)) throw new Error('返回格式错误：' + JSON.stringify(nodes).slice(0,100));
+  } catch (e) {
+    setStatus('err', '目录获取失败：' + e.message);
+    showError('目录树获取失败：<br><code style="font-size:.7rem">' + e.message + '</code>');
+    return;
+  }
+
+  // 将 BEA 英文说明翻译为中文（近似）
+  nodes = nodes.map(n => ({ ...n, name: translateBeaDesc(n.name, n.id) }));
+  setStatus('ok', `目录节点 ${nodes.length} 个 · 数据集: ${dataset} · 参数: ${paramName}`);
+  renderTree(nodes, dataset, paramName);
+}
+
+// BEA 表名说明翻译（关键词匹配）
+const BEA_TABLE_ZH = {
+  'T10101': '国内生产总值（支出法）',
+  'T10105': '国内生产总值（增长贡献）',
+  'T10109': 'GDP 与价格平减指数',
+  'T10301': '国内总收入与产品',
+  'T20100': '个人收入与支出',
+  'T20200': '可支配个人收入',
+  'T20600': '个人储蓄率',
+  'T20804': 'PCE 价格指数',
+  'T30100': '政府财政账户',
+  'T30200': '联邦政府收入',
+  'T30300': '联邦政府支出',
+  'T50100': '固定资产与消费',
+  'T60500': '公司资本消耗',
+  'T61000': '公司利润',
+  'T70100': '对外交易账户',
+  'T71100': '出口与进口汇总',
+};
+
+function translateBeaDesc(desc, id) {
+  if (BEA_TABLE_ZH[id]) return BEA_TABLE_ZH[id] + '  [' + id + ']';
+  if (!desc) return id || '';
+  // 关键词替换
+  const kw = [
+    ['Gross domestic product','国内生产总值'],
+    ['Personal consumption','个人消费'],
+    ['Government','政府'],
+    ['Investment','投资'],
+    ['Income','收入'],
+    ['Saving','储蓄'],
+    ['Profit','利润'],
+    ['Price','价格'],
+    ['Export','出口'],
+    ['Import','进口'],
+    ['Fixed assets','固定资产'],
+    ['Corporate','公司'],
+    ['Compensation','报酬'],
+    ['National income','国民收入'],
+    ['Federal','联邦'],
+    ['State','州'],
+    ['Durable','耐用品'],
+    ['Nondurable','非耐用品'],
+    ['Residential','住宅'],
+    ['Nonresidential','非住宅'],
+  ];
+  let out = desc;
+  for (const [en, cn] of kw) {
+    if (out.toLowerCase().includes(en.toLowerCase())) {
+      return cn + '  [' + out.slice(0, 30) + ']';
+    }
+  }
+  return out;
+}
+
+// ── 渲染目录树 ──────────────────────────────────────────────────
+function renderTree(nodes, dataset, paramName) {
+  const area = document.getElementById('outputArea');
+  clearOutput();
+  const keyword = window._treeSearchKeyword || '';
+
+  const filtered = keyword
+    ? nodes.filter(n => n.name?.includes(keyword) || n.id?.includes(keyword))
+    : nodes;
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function escRe(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+  function hl(text) {
+    if (!keyword) return escHtml(text);
+    const safe = escHtml(text);
+    const safeKw = escHtml(keyword);
+    return safe.replace(new RegExp(escRe(safeKw), 'gi'), m => `<span class="hl">${m}</span>`);
+  }
+
+  const box = document.createElement('div');
+  box.className = 'table-box';
+  box.innerHTML = `
+    <div class="tree-search-bar">
+      <input class="tree-search-input" id="treeSearch" placeholder="搜索指标名称或代码…"
+        value="${keyword}"
+        oninput="treeOnSearch(this.value)">
+      ${keyword ? `<button class="tree-search-clear" onclick="treeClearSearch()">✕ 清除</button>` : ''}
+    </div>
+    <div class="tree-stats-bar">
+      <span>共 <strong>${filtered.length}</strong> 个节点${keyword ? `（已过滤，原 ${nodes.length} 个）` : ''}</span>
+      <span style="color:var(--dim)">·</span>
+      <span>数据集：<strong style="color:var(--accent2)">${dataset || 'NIPA'}</strong></span>
+      <span style="color:var(--dim)">·</span>
+      <span style="color:var(--muted);font-size:.6rem">点击「→ 分析」查询并传至统计分析台</span>
+    </div>
+    <div class="table-header">
+      <span class="table-title">BEA 指标目录 · ${dataset || 'NIPA'} · ${paramName || 'TableName'}</span>
+    </div>
+    <table>
+      <thead><tr><th>代码</th><th>指标名称（中文）</th><th>类型</th><th style="text-align:right">操作</th></tr></thead>
+      <tbody>${filtered.map(n => `<tr>
+        <td style="color:var(--accent);font-family:var(--mono)">${hl(n.id||'')}</td>
+        <td>${hl(n.name||n.id)}</td>
+        <td style="color:var(--muted)">${n.isParent ? '📂 分类' : '📄 可查询'}</td>
+        <td style="text-align:right">
+          <button class="analyze-btn" title="查询该表数据并传至分析台"
+            onclick="treeAnalyze('${n.id}','${(n.name||n.id).replace(/'/g,"\\'")}')">
+            → 分析
+          </button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  area.appendChild(box);
+
+  // 保存当前节点供搜索用
+  window._treeNodes   = nodes;
+  window._treeDataset = dataset;
+  window._treeParam   = paramName;
+
+  if (keyword) setTimeout(() => document.getElementById('treeSearch')?.focus(), 50);
+}
+
+function treeOnSearch(kw) {
+  window._treeSearchKeyword = kw.trim();
+  renderTree(window._treeNodes, window._treeDataset, window._treeParam);
+}
+function treeClearSearch() {
+  window._treeSearchKeyword = '';
+  renderTree(window._treeNodes, window._treeDataset, window._treeParam);
+}
+
+async function treeAnalyze(tableId, name) {
+  const dataset = window._treeDataset || 'NIPA';
+  setStatus('loading', `正在获取「${name || tableId}」数据（年度，Line 1）…`);
+
+  // 尝试年度，Line 1
+  let nodes = [];
+  for (const freq of ['A','Q']) {
+    try {
+      const url = `/.netlify/functions/bea-proxy?dataset=${dataset}&tableName=${encodeURIComponent(tableId)}&frequency=${freq}&year=X`;
+      const res  = await fetch(url);
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (json.error) continue;
+      nodes = parseBeaData(json.data, freq, ['1']);
+      if (nodes.length > 0) break;
+    } catch { continue; }
+  }
+
+  if (!nodes || nodes.length === 0) {
+    setStatus('err', `「${name}」数据获取失败`);
+    return;
+  }
+
+  setStatus('ok', `「${name}」共 ${nodes.length} 条，正在传至统计分析台…`);
+  const slim = { cmd: tableId, p: nodes.map(n=>n.period), v: nodes.map(n=>n.value) };
+  window.open('https://cli-gong.netlify.app?pipeline=' + encodeURIComponent(JSON.stringify(slim)), '_blank');
+}
+
+// ── 渲染图表 ──────────────────────────────────────────────────
+function renderChart(nodes, label) {
+  const area = document.getElementById('outputArea');
+  clearOutput();
+  window._lastNodes = nodes;
+
+  const chartBox = document.createElement('div');
+  chartBox.className = 'chart-box';
+  chartBox.innerHTML = `
+    <div class="chart-header">
+      <span class="chart-title">${label}</span>
+      <span class="chart-meta">数据条数: ${nodes.length} · 来源: BEA（美国经济分析局）</span>
+    </div>
+    <canvas id="mainChart"></canvas>`;
+  area.appendChild(chartBox);
+
+  const vals = nodes.map(n => n.value);
+  const grid = document.createElement('div');
+  grid.className = 'summary-grid';
+  [
+    ['最新值',  fmtNum(vals.at(-1)),                            nodes.at(-1)?.period],
+    ['最大值',  fmtNum(Math.max(...vals)),                      ''],
+    ['最小值',  fmtNum(Math.min(...vals)),                      ''],
+    ['均值',    fmtNum(vals.reduce((a,b)=>a+b,0)/vals.length), ''],
+  ].forEach(([lbl, val, sub]) => {
+    const card = document.createElement('div');
+    card.className = 'stat-card';
+    card.innerHTML = `<div class="stat-card-label">${lbl}</div>
+                      <div class="stat-card-value">${val}</div>
+                      <div class="stat-card-sub">${sub}</div>`;
+    grid.appendChild(card);
+  });
+  area.appendChild(grid);
+
+  const pipeRow = document.createElement('div');
+  pipeRow.className = 'status-row';
+  pipeRow.innerHTML = `
+    <span style="color:var(--muted);font-size:.68rem">数据管道</span>
+    <button class="pipeline-btn" onclick="pipelineExport()">→ 传至统计多工具台（CLI-Anything）</button>
+    <button class="export-btn" onclick="downloadCSV(window._lastNodes,'${label.replace(/'/g,"\\'")}')">⬇ 下载 CSV</button>`;
+  area.appendChild(pipeRow);
+
+  if (chartInstance) chartInstance.destroy();
+  const ctx = document.getElementById('mainChart').getContext('2d');
+  chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: nodes.map(n => n.period),
+      datasets: [{
+        label,
+        data: vals,
+        borderColor: '#3b9eff',
+        backgroundColor: 'rgba(59,158,255,.06)',
+        borderWidth: 1.8,
+        pointRadius: nodes.length > 80 ? 0 : 3,
+        pointBackgroundColor: '#3b9eff',
+        fill: true, tension: .3,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: '#4a6a8a', font: { family: "'IBM Plex Mono'" } } },
+        tooltip: { callbacks: { label: ctx => ' ' + fmtNum(ctx.parsed.y) } }
+      },
+      scales: {
+        x: { ticks: { color:'#4a6a8a', maxTicksLimit:14, font:{family:"'IBM Plex Mono'",size:10} }, grid: { color:'#131e2d' } },
+        y: { ticks: { color:'#4a6a8a', font:{family:"'IBM Plex Mono'",size:10} }, grid: { color:'#131e2d' } }
+      }
+    }
+  });
+}
+
+// ── 渲染表格 ──────────────────────────────────────────────────
+function renderTable(nodes, label) {
+  const area = document.getElementById('outputArea');
+  clearOutput();
+  window._lastNodes = nodes;
+
+  const box = document.createElement('div');
+  box.className = 'table-box';
+  box.innerHTML = `
+    <div class="table-header">
+      <span class="table-title">${label} · ${nodes.length} 条记录</span>
+      <button class="export-btn" onclick="downloadCSV(window._lastNodes,'${label.replace(/'/g,"\\'")}')">⬇ CSV</button>
+    </div>
+    <table>
+      <thead><tr><th>#</th><th>时间</th><th>数值</th></tr></thead>
+      <tbody>${nodes.map((n,i) => `<tr>
+        <td style="color:var(--dim)">${i+1}</td>
+        <td>${n.period}</td>
+        <td style="color:var(--accent2)">${fmtNum(n.value)}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  area.appendChild(box);
+
+  const pipeRow = document.createElement('div');
+  pipeRow.className = 'status-row';
+  pipeRow.style.padding = '.6rem 1.2rem';
+  pipeRow.innerHTML = `
+    <span style="color:var(--muted);font-size:.68rem">数据管道</span>
+    <button class="pipeline-btn" onclick="pipelineExport()">→ 传至统计多工具台（CLI-Anything）</button>`;
+  area.appendChild(pipeRow);
+}
+
+// ── CSV 导出 ──────────────────────────────────────────────────
+function downloadCSV(nodes, label) {
+  if (!nodes) return;
+  const csv = '时间,数值\n' + nodes.map(n=>`${n.period},${n.value}`).join('\n');
+  const a   = document.createElement('a');
+  a.href     = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
+  a.download = `bea-stats-${currentCmd}-${Date.now()}.csv`;
+  a.click();
+}
+
+function pipelineExport() {
+  if (!window._lastNodes?.length) { alert('请先执行查询，获取数据后再导出。'); return; }
+  const slim    = { cmd: currentCmd, p: window._lastNodes.map(n=>n.period), v: window._lastNodes.map(n=>n.value) };
+  const payload = encodeURIComponent(JSON.stringify(slim));
+  window.open('https://cli-gong.netlify.app?pipeline=' + payload, '_blank');
+}
+
+function clearOutput() {
+  const area   = document.getElementById('outputArea');
+  const status = document.getElementById('statusRow');
+  area.innerHTML = '';
+  if (status) area.appendChild(status);
+}
+
+function showError(msg) {
+  const area = document.getElementById('outputArea');
+  clearOutput();
+  const el = document.createElement('div');
+  el.className = 'empty-state';
+  el.innerHTML = `<div class="empty-icon">⚠</div>
+    <div class="empty-text" style="color:#ef4444">${msg}</div>
+    <div class="empty-code">提示：请确认 BEA_API_KEY 已配置，且表名与行代码正确</div>`;
+  area.appendChild(el);
+}
+
+function setStatus(type, msg) {
+  const area = document.getElementById('outputArea');
+  let row = document.getElementById('statusRow');
+  if (!row) {
+    row = document.createElement('div');
+    row.id = 'statusRow'; row.className = 'status-row';
+    area.prepend(row);
+  }
+  row.innerHTML = `<div class="status-dot ${type}"></div><span>${msg}</span>`;
+}
+
+function fmtNum(n) {
+  if (n === undefined || n === null) return '-';
+  return Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+</script>
+</body>
+</html>
